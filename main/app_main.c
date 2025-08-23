@@ -19,17 +19,18 @@
 
 #include "esp_log.h"
 #include "mqtt_client.h"
-#include "esp_tls.h"
+#include "mqtt_credentials.h"
+#include "driver/adc.h"
+
+static int read_adc_gpio0(void)
+{
+    int raw = 0;
+    adc2_config_channel_atten(ADC2_CHANNEL_1, ADC_ATTEN_DB_11);
+    adc2_get_raw(ADC2_CHANNEL_1, ADC_WIDTH_BIT_12, &raw);
+    return raw;
+}
 
 static const char *TAG = "mqtts_example";
-
-
-#if CONFIG_BROKER_CERTIFICATE_OVERRIDDEN == 1
-static const uint8_t hivemq_com_pem_start[]  = "-----BEGIN CERTIFICATE-----\n" CONFIG_BROKER_CERTIFICATE_OVERRIDE "\n-----END CERTIFICATE-----";
-#else
-extern const uint8_t hivemq_com_pem_start[]   asm("_binary_hivemq_com_pem_start");
-#endif
-extern const uint8_t hivemq_com_pem_end[]   asm("_binary_hivemq_com_pem_end");
 
 /*
  * @brief Event handler registered to receive MQTT events
@@ -49,8 +50,11 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
     switch ((esp_mqtt_event_id_t)event_id) {
     case MQTT_EVENT_CONNECTED:
         ESP_LOGI(TAG, "MQTT_EVENT_CONNECTED");
-        /* Publish a retained message so that other clients can fetch the latest value */
-        esp_mqtt_client_publish(client, "/esp32/retained", "hello", 0, 1, 1);
+        /* Read moisture level from ADC GPIO0 and publish a retained message */
+        int moisture = read_adc_gpio0();
+        char payload[16];
+        snprintf(payload, sizeof(payload), "%d", moisture);
+        esp_mqtt_client_publish(client, "/moisture", payload, 0, 1, 1);
         break;
     case MQTT_EVENT_PUBLISHED:
         ESP_LOGI(TAG, "MQTT_EVENT_PUBLISHED, msg_id=%d", event->msg_id);
@@ -69,7 +73,12 @@ static void mqtt_app_start(void)
     const esp_mqtt_client_config_t mqtt_cfg = {
         .broker = {
             .address.uri = CONFIG_BROKER_URI,
-            .verification.certificate = (const char *)hivemq_com_pem_start
+        },
+        .credentials = {
+            .username = MQTT_USERNAME,
+            .authentication = {
+                .password = MQTT_PASSWORD,
+            },
         },
     };
 
