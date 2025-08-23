@@ -20,6 +20,8 @@ This example can be executed on any ESP32 board, the only required interface is 
 
 * Open the project configuration menu (`idf.py menuconfig`)
 * Configure Wi-Fi or Ethernet under "Example Connection Configuration" menu. See "Establishing Wi-Fi or Ethernet Connection" section in [examples/protocols/README.md](../../README.md) for more details.
+* Copy `main/mqtt_credentials.example.h` to `main/mqtt_credentials.h` and set your MQTT username and password. This file is ignored by git to keep credentials private.
+* On connection the firmware reads an analog value from GPIO0 (ADC port 9) and publishes it to the `/moisture` topic.
 
 PEM certificate for this example could be extracted from an openssl `s_client` command connecting to mqtt.eclipseprojects.io.
 In case a host operating system has `openssl` and `sed` packages installed, one could execute the following command to download and save the root certificate to a file (Note for Windows users: Both Linux like environment or Windows native packages may be used).
