@@ -13,6 +13,8 @@
 #include "mqtt_client.h"
 #include "mqtt_credentials.h"
 #include "driver/adc.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
 static int read_adc_gpio0(void)
 {
@@ -106,4 +108,10 @@ void app_main(void)
     ESP_ERROR_CHECK(example_connect());
 
     mqtt_app_start();
+
+    while (1) {
+        int moisture = read_adc_gpio0();
+        ESP_LOGI("Dry value", "%d", moisture);
+        vTaskDelay(pdMS_TO_TICKS(1000));
+    }
 }
