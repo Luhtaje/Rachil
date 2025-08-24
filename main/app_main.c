@@ -12,19 +12,69 @@
 #include "esp_log.h"
 #include "mqtt_client.h"
 #include "mqtt_credentials.h"
-#include "driver/adc.h"
+#include "esp_adc/adc_oneshot.h"
+#include "esp_adc/adc_cali.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
+static const char *TAG = "Rachil Moisture Sensor";
+static int adc_raw = 0;
+adc_cali_handle_t cali_handle = NULL;
+adc_oneshot_unit_handle_t adc_handle = NULL;
+
+
 static int read_adc_gpio0(void)
 {
-    int raw = 0;
-    adc2_config_channel_atten(ADC2_CHANNEL_1, ADC_ATTEN_DB_11);
-    adc2_get_raw(ADC2_CHANNEL_1, ADC_WIDTH_BIT_12, &raw);
-    return raw;
+    ESP_ERROR_CHECK(adc_oneshot_read(adc_handle, ADC_CHANNEL_0, &adc_raw));
+    ESP_LOGI(TAG,"ADC Raw: %d", adc_raw);
+    return adc_raw;
 }
 
-static const char *TAG = "mqtts_example";
+static int adc_init()
+{
+    adc_oneshot_unit_init_cfg_t init_config = {
+        .unit_id = ADC_UNIT_1,
+    };
+    ESP_ERROR_CHECK(adc_oneshot_new_unit(&init_config, &adc_handle));
+
+    adc_oneshot_chan_cfg_t config = {
+        .atten = ADC_ATTEN_DB_12,
+        .bitwidth = ADC_BITWIDTH_DEFAULT,
+    };
+
+    ESP_ERROR_CHECK(adc_oneshot_config_channel(adc_handle, ADC_CHANNEL_0, &config));
+    return 0;   
+}
+
+static bool adc_cali_init(adc_unit_t unit, adc_channel_t channel, adc_atten_t atten, adc_cali_handle_t *out_handle)
+{
+    adc_cali_handle_t handle = NULL;
+    esp_err_t ret = ESP_FAIL;
+
+    ESP_LOGI(TAG, "calibration scheme version is %s", "Curve Fitting");
+    adc_cali_curve_fitting_config_t cali_config = {
+    .unit_id = unit,
+    .chan = channel,
+    .atten = atten,
+    .bitwidth = ADC_BITWIDTH_DEFAULT,
+    };
+    
+    ret = adc_cali_create_scheme_curve_fitting(&cali_config, &handle);
+    if (ret == ESP_OK) {
+        cali_handle = handle;
+        return true;
+    } else {
+        ESP_LOGW(TAG, "Calibration failed");
+        return false;
+    }
+};
+    
+
+static int tear_down()
+{
+    ESP_ERROR_CHECK(adc_oneshot_del_unit(adc_handle)); 
+    return 0;
+}
 
 /*
  * @brief Event handler registered to receive MQTT events
@@ -81,6 +131,8 @@ static void mqtt_app_start(void)
     /* The last argument may be used to pass data to the event handler, in this example mqtt_event_handler */
     esp_mqtt_client_register_event(client, ESP_EVENT_ANY_ID, mqtt_event_handler, NULL);
     esp_mqtt_client_start(client);
+
+
 }
 
 void app_main(void)
@@ -107,11 +159,17 @@ void app_main(void)
      */
     ESP_ERROR_CHECK(example_connect());
 
-    mqtt_app_start();
+    //mqtt_app_start();
+    adc_init();
+    adc_cali_init(ADC_UNIT_1, ADC_CHANNEL_0, ADC_ATTEN_DB_12, &cali_handle);
 
     while (1) {
         int moisture = read_adc_gpio0();
         ESP_LOGI("Dry value", "%d", moisture);
         vTaskDelay(pdMS_TO_TICKS(1000));
+        //Dry 3400 ish, wet 1750 ish
     }
+
+    //tear_down();
+
 }
